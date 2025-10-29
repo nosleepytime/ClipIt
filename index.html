@@ -837,6 +837,8 @@
                 auth.createUserWithEmailAndPassword(email, password)
                     .then((userCredential) => {
                         console.log("User created:", userCredential.user);
+                        // Update user count when new user signs up
+                        updateUserCount(1);
                         authModal.style.display = 'none';
                         authEmail.value = '';
                         authPassword.value = '';
@@ -904,7 +906,8 @@
                     addClipModal.style.display = 'none';
                     clipContent.value = '';
                     loadUserClips();
-                    updateStats();
+                    // Update total clips count
+                    updateTotalClipsCount(1);
                 })
                 .catch(error => {
                     alert('Error saving clip: ' + error.message);
@@ -976,13 +979,19 @@
             }
             
             if (confirm(`Are you sure you want to delete ${selectedClips.length} clip(s)?`)) {
+                const deleteCount = selectedClips.length;
                 deleteSelectedClips();
+                // Update total clips count
+                updateTotalClipsCount(-deleteCount);
             }
         });
 
         deleteAllBtn.addEventListener('click', () => {
             if (confirm('Are you sure you want to delete ALL your clips? This action cannot be undone.')) {
+                const deleteCount = userClips.length;
                 deleteAllClips();
+                // Update total clips count
+                updateTotalClipsCount(-deleteCount);
             }
         });
 
@@ -1051,23 +1060,29 @@
             // Update user clips count
             userClipsCount.textContent = userClips.length;
             
-            // Update total users and clips (this would normally come from Firebase)
-            // For demo purposes, we'll use simulated data
-            if (currentUser) {
-                database.ref('stats').once('value').then(snapshot => {
-                    if (snapshot.exists()) {
-                        const stats = snapshot.val();
-                        totalUsers.textContent = stats.totalUsers || 0;
-                        totalClips.textContent = stats.totalClips || 0;
-                    } else {
-                        totalUsers.textContent = '1';
-                        totalClips.textContent = userClips.length;
-                    }
-                });
-            } else {
-                totalUsers.textContent = '0';
-                totalClips.textContent = '0';
-            }
+            // Load global stats from Firebase
+            database.ref('stats').on('value', snapshot => {
+                if (snapshot.exists()) {
+                    const stats = snapshot.val();
+                    totalUsers.textContent = stats.totalUsers || 0;
+                    totalClips.textContent = stats.totalClips || 0;
+                } else {
+                    totalUsers.textContent = '0';
+                    totalClips.textContent = '0';
+                }
+            });
+        }
+
+        function updateUserCount(change) {
+            database.ref('stats/totalUsers').transaction(current => {
+                return (current || 0) + change;
+            });
+        }
+
+        function updateTotalClipsCount(change) {
+            database.ref('stats/totalClips').transaction(current => {
+                return (current || 0) + change;
+            });
         }
 
         function enterSelectionMode(mode) {
@@ -1133,7 +1148,7 @@
             }
         }
 
-        // Initialize
+        // Initialize stats on page load
         updateStats();
     </script>
 </body>
