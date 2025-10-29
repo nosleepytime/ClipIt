@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClipIt - Your Smart Clipboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://www.gstatic.com/firebasejs/12.4.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/12.4.0/firebase-analytics.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/12.4.0/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/12.4.0/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-analytics-compat.js"></script>
     <style>
         :root {
             --dark-bg: #0a0a0a;
@@ -472,6 +472,13 @@
             background: rgba(40, 40, 40, 0.7);
         }
 
+        .error-message {
+            color: #ff4444;
+            font-size: 0.9rem;
+            margin-top: 5px;
+            display: none;
+        }
+
         @media (max-width: 768px) {
             .content-area {
                 grid-template-columns: 1fr;
@@ -643,10 +650,12 @@
             <div class="form-group">
                 <label class="form-label">Email</label>
                 <input type="email" class="form-input" id="authEmail" placeholder="Enter your email">
+                <div class="error-message" id="emailError"></div>
             </div>
             <div class="form-group">
                 <label class="form-label">Password</label>
                 <input type="password" class="form-input" id="authPassword" placeholder="Enter your password">
+                <div class="error-message" id="passwordError"></div>
             </div>
             <div class="form-actions">
                 <button class="btn" id="switchAuthMode">Switch to Sign Up</button>
@@ -670,9 +679,9 @@
 
         // Initialize Firebase
         const app = firebase.initializeApp(firebaseConfig);
-        const analytics = firebase.analytics();
         const auth = firebase.auth();
         const database = firebase.database();
+        const analytics = firebase.analytics();
 
         // DOM Elements
         const authBtn = document.getElementById('authBtn');
@@ -683,6 +692,8 @@
         const authModalTitle = document.getElementById('authModalTitle');
         const authEmail = document.getElementById('authEmail');
         const authPassword = document.getElementById('authPassword');
+        const emailError = document.getElementById('emailError');
+        const passwordError = document.getElementById('passwordError');
         const userName = document.getElementById('userName');
         const userEmail = document.getElementById('userEmail');
         const totalUsers = document.getElementById('totalUsers');
@@ -721,6 +732,7 @@
 
         // Auth state listener
         auth.onAuthStateChanged(user => {
+            console.log("Auth state changed:", user);
             if (user) {
                 currentUser = user;
                 userName.textContent = user.displayName || user.email.split('@')[0];
@@ -742,9 +754,18 @@
         // Event Listeners
         authBtn.addEventListener('click', () => {
             if (currentUser) {
-                auth.signOut();
+                auth.signOut().then(() => {
+                    console.log("User signed out");
+                }).catch(error => {
+                    console.error("Sign out error:", error);
+                });
             } else {
                 authModal.style.display = 'flex';
+                // Reset form
+                authEmail.value = '';
+                authPassword.value = '';
+                emailError.style.display = 'none';
+                passwordError.style.display = 'none';
             }
         });
 
@@ -757,31 +778,81 @@
             authModalTitle.textContent = isSignIn ? 'Sign In' : 'Sign Up';
             confirmAuth.textContent = isSignIn ? 'Sign In' : 'Sign Up';
             switchAuthMode.textContent = isSignIn ? 'Switch to Sign Up' : 'Switch to Sign In';
+            // Clear errors when switching modes
+            emailError.style.display = 'none';
+            passwordError.style.display = 'none';
         });
 
         confirmAuth.addEventListener('click', () => {
             const email = authEmail.value;
             const password = authPassword.value;
             
+            // Clear previous errors
+            emailError.style.display = 'none';
+            passwordError.style.display = 'none';
+            
+            // Basic validation
+            if (!email) {
+                emailError.textContent = 'Email is required';
+                emailError.style.display = 'block';
+                return;
+            }
+            
+            if (!password) {
+                passwordError.textContent = 'Password is required';
+                passwordError.style.display = 'block';
+                return;
+            }
+            
+            if (password.length < 6) {
+                passwordError.textContent = 'Password must be at least 6 characters';
+                passwordError.style.display = 'block';
+                return;
+            }
+
             if (isSignIn) {
+                // Sign in
                 auth.signInWithEmailAndPassword(email, password)
-                    .then(() => {
+                    .then((userCredential) => {
+                        console.log("User signed in:", userCredential.user);
                         authModal.style.display = 'none';
                         authEmail.value = '';
                         authPassword.value = '';
                     })
                     .catch(error => {
-                        alert('Error signing in: ' + error.message);
+                        console.error("Sign in error:", error);
+                        if (error.code === 'auth/user-not-found') {
+                            emailError.textContent = 'No account found with this email';
+                            emailError.style.display = 'block';
+                        } else if (error.code === 'auth/wrong-password') {
+                            passwordError.textContent = 'Incorrect password';
+                            passwordError.style.display = 'block';
+                        } else {
+                            passwordError.textContent = error.message;
+                            passwordError.style.display = 'block';
+                        }
                     });
             } else {
+                // Sign up
                 auth.createUserWithEmailAndPassword(email, password)
-                    .then(() => {
+                    .then((userCredential) => {
+                        console.log("User created:", userCredential.user);
                         authModal.style.display = 'none';
                         authEmail.value = '';
                         authPassword.value = '';
                     })
                     .catch(error => {
-                        alert('Error creating account: ' + error.message);
+                        console.error("Sign up error:", error);
+                        if (error.code === 'auth/email-already-in-use') {
+                            emailError.textContent = 'Email already in use';
+                            emailError.style.display = 'block';
+                        } else if (error.code === 'auth/invalid-email') {
+                            emailError.textContent = 'Invalid email address';
+                            emailError.style.display = 'block';
+                        } else {
+                            passwordError.textContent = error.message;
+                            passwordError.style.display = 'block';
+                        }
                     });
             }
         });
